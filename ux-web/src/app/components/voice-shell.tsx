@@ -6,17 +6,58 @@ import {
   PipecatClientProvider,
   PipecatClientAudio,
   useRTVIClientEvent,
-  usePipecatClient,
 } from "@pipecat-ai/client-react";
 import { DailyTransport } from "@pipecat-ai/daily-transport";
 
-function NumberDisplay({
-  number,
-  flash,
-}: {
-  number: number;
-  flash: "bot" | "user" | null;
-}) {
+type ShapeState = {
+  shape: "circle" | "triangle" | "square" | "pentagon" | "hexagon" | "star" | "diamond";
+  color: string;
+  size: "small" | "medium" | "large";
+  fill: "solid" | "outline";
+} | null;
+
+function polygonPoints(cx: number, cy: number, r: number, sides: number): string {
+  return Array.from({ length: sides }, (_, i) => {
+    const angle = (Math.PI * 2 * i) / sides - Math.PI / 2;
+    return `${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`;
+  }).join(" ");
+}
+
+function starPoints(cx: number, cy: number, outerR: number, innerR: number): string {
+  return Array.from({ length: 10 }, (_, i) => {
+    const angle = (Math.PI * i) / 5 - Math.PI / 2;
+    const r = i % 2 === 0 ? outerR : innerR;
+    return `${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`;
+  }).join(" ");
+}
+
+function renderShapeSvg(shape: NonNullable<ShapeState>) {
+  const fill = shape.fill === "solid" ? shape.color : "none";
+  const stroke = shape.fill === "solid" ? "none" : shape.color;
+  const strokeWidth = shape.fill === "outline" ? 6 : undefined;
+  const attrs = { fill, stroke, strokeWidth };
+
+  switch (shape.shape) {
+    case "circle":
+      return <circle cx="50" cy="50" r="45" {...attrs} />;
+    case "square":
+      return <rect x="5" y="5" width="90" height="90" {...attrs} />;
+    case "triangle":
+      return <polygon points="50,5 95,95 5,95" {...attrs} />;
+    case "diamond":
+      return <polygon points="50,5 95,50 50,95 5,50" {...attrs} />;
+    case "pentagon":
+      return <polygon points={polygonPoints(50, 50, 45, 5)} {...attrs} />;
+    case "hexagon":
+      return <polygon points={polygonPoints(50, 50, 45, 6)} {...attrs} />;
+    case "star":
+      return <polygon points={starPoints(50, 50, 45, 20)} {...attrs} />;
+  }
+}
+
+function ShapeDisplay({ shape, flash }: { shape: ShapeState; flash: boolean }) {
+  const sizePx = shape ? { small: 200, medium: 400, large: 600 }[shape.size] : 300;
+
   return (
     <div
       style={{
@@ -29,106 +70,50 @@ function NumberDisplay({
         overflow: "hidden",
       }}
     >
-      {/* Background glow on change */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background:
-            flash === "bot"
-              ? "radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)"
-              : flash === "user"
-                ? "radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 70%)"
-                : "none",
+          background: flash
+            ? "radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)"
+            : "none",
           transition: "background 0.3s ease-out",
         }}
       />
-      <div
-        style={{
-          fontSize: "clamp(8rem, 20vw, 20rem)",
-          fontWeight: 800,
-          fontVariantNumeric: "tabular-nums",
-          lineHeight: 1,
-          transition: "transform 0.15s ease-out, color 0.3s ease-out",
-          transform: flash ? "scale(1.05)" : "scale(1)",
-          color:
-            flash === "bot"
-              ? "#a78bfa"
-              : flash === "user"
-                ? "#60a5fa"
-                : "#fafafa",
-          textShadow: flash
-            ? `0 0 60px ${flash === "bot" ? "rgba(139,92,246,0.5)" : "rgba(37,99,235,0.5)"}`
-            : "none",
-          userSelect: "none",
-        }}
-      >
-        {number}
-      </div>
+      {shape ? (
+        <svg
+          width={sizePx}
+          height={sizePx}
+          viewBox="0 0 100 100"
+          style={{
+            maxWidth: "70vw",
+            maxHeight: "70vh",
+            transition: "transform 0.15s ease-out",
+            transform: flash ? "scale(1.05)" : "scale(1)",
+            filter: flash ? `drop-shadow(0 0 20px ${shape.color})` : "none",
+          }}
+        >
+          {renderShapeSvg(shape)}
+        </svg>
+      ) : (
+        <div style={{ textAlign: "center", color: "#555", userSelect: "none" }}>
+          <div style={{ fontSize: "5rem", marginBottom: "1rem", opacity: 0.3 }}>◇</div>
+          <p style={{ fontSize: "1rem" }}>Ask for a shape</p>
+        </div>
+      )}
       <div
         style={{
           marginTop: "1.5rem",
           fontSize: "0.85rem",
           color: "#666",
           transition: "opacity 0.3s",
-          opacity: flash ? 1 : 0.5,
+          opacity: shape ? 1 : 0.4,
         }}
       >
-        {flash === "bot"
-          ? "Changed by AI"
-          : flash === "user"
-            ? "Changed by you"
-            : "Say a number or use +/- buttons"}
+        {shape
+          ? `${shape.size} · ${shape.fill} · ${shape.color} · ${shape.shape}`
+          : `Try: "large solid coral hexagon"`}
       </div>
-    </div>
-  );
-}
-
-function NumberControls({
-  number,
-  onNumberChange,
-}: {
-  number: number;
-  onNumberChange: (n: number) => void;
-}) {
-  return (
-    <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.5rem" }}>
-      <button
-        onClick={() => onNumberChange(number - 1)}
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: "50%",
-          border: "1px solid #333",
-          background: "transparent",
-          color: "#fafafa",
-          fontSize: "1.5rem",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        -
-      </button>
-      <button
-        onClick={() => onNumberChange(number + 1)}
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: "50%",
-          border: "1px solid #333",
-          background: "transparent",
-          color: "#fafafa",
-          fontSize: "1.5rem",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        +
-      </button>
     </div>
   );
 }
@@ -168,13 +153,7 @@ function TranscriptDisplay() {
   }, [messages]);
 
   return (
-    <div
-      style={{
-        flex: 1,
-        overflowY: "auto",
-        padding: "0.5rem 0",
-      }}
-    >
+    <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem 0" }}>
       {messages.map((m) => (
         <div
           key={m.id}
@@ -204,46 +183,37 @@ function TranscriptDisplay() {
 }
 
 function ConnectedUI({
-  number,
+  shape,
   flash,
-  onNumberChange,
+  onShapeUpdate,
   onEnd,
 }: {
-  number: number;
-  flash: "bot" | "user" | null;
-  onNumberChange: (n: number) => void;
+  shape: ShapeState;
+  flash: boolean;
+  onShapeUpdate: (s: ShapeState) => void;
   onEnd: () => void;
 }) {
-  const client = usePipecatClient();
-
   useRTVIClientEvent(
     "serverMessage" as any,
     useCallback(
       (msg: any) => {
         const data = msg?.data ?? msg;
-        if (data?.type === "number_update") {
-          onNumberChange(data.value);
+        if (data?.type === "shape_update") {
+          onShapeUpdate({
+            shape: data.shape,
+            color: data.color,
+            size: data.size,
+            fill: data.fill,
+          });
         }
       },
-      [onNumberChange]
+      [onShapeUpdate]
     )
-  );
-
-  const handleUserNumberChange = useCallback(
-    (n: number) => {
-      onNumberChange(n);
-      try {
-        client?.sendClientMessage("number_update", { value: n });
-      } catch (err) {
-        console.error("Failed to send number update:", err);
-      }
-    },
-    [client, onNumberChange]
   );
 
   return (
     <div style={{ display: "flex", width: "100%", height: "100vh" }}>
-      {/* Left pane: controls + transcript */}
+      {/* Left pane: transcript */}
       <div
         style={{
           width: 360,
@@ -255,24 +225,15 @@ function ConnectedUI({
           background: "#0a0a0a",
         }}
       >
-        <h2
-          style={{
-            fontSize: "1.1rem",
-            fontWeight: 600,
-            marginBottom: "0.25rem",
-          }}
-        >
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "0.25rem" }}>
           DA Voice Hackathon
         </h2>
         <p style={{ color: "#666", fontSize: "0.8rem", marginBottom: "1rem" }}>
-          Talk to the AI or use buttons to change the number
+          Talk to the AI to render geometric shapes
         </p>
-
-        <NumberControls number={number} onNumberChange={handleUserNumberChange} />
 
         <div
           style={{
-            marginTop: "1.5rem",
             fontSize: "0.75rem",
             color: "#555",
             textTransform: "uppercase",
@@ -300,8 +261,8 @@ function ConnectedUI({
         </button>
       </div>
 
-      {/* Right pane: giant number */}
-      <NumberDisplay number={number} flash={flash} />
+      {/* Right pane: shape display */}
+      <ShapeDisplay shape={shape} flash={flash} />
     </div>
   );
 }
@@ -316,28 +277,20 @@ export function VoiceShell() {
   );
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [number, setNumber] = useState(0);
-  const [flash, setFlash] = useState<"bot" | "user" | null>(null);
+  const [currentShape, setCurrentShape] = useState<ShapeState>(null);
+  const [flash, setFlash] = useState(false);
   const flashTimeout = useRef<ReturnType<typeof setTimeout>>();
 
-  const triggerFlash = useCallback((source: "bot" | "user") => {
-    setFlash(source);
+  const triggerFlash = useCallback(() => {
+    setFlash(true);
     if (flashTimeout.current) clearTimeout(flashTimeout.current);
-    flashTimeout.current = setTimeout(() => setFlash(null), 800);
+    flashTimeout.current = setTimeout(() => setFlash(false), 800);
   }, []);
 
-  const handleNumberChange = useCallback(
-    (n: number) => {
-      setNumber(n);
-      triggerFlash("bot");
-    },
-    [triggerFlash]
-  );
-
-  const handleUserNumberChange = useCallback(
-    (n: number) => {
-      setNumber(n);
-      triggerFlash("user");
+  const handleShapeUpdate = useCallback(
+    (s: ShapeState) => {
+      setCurrentShape(s);
+      triggerFlash();
     },
     [triggerFlash]
   );
@@ -345,9 +298,7 @@ export function VoiceShell() {
   const startSession = async () => {
     setConnecting(true);
     try {
-      await client.startBotAndConnect({
-        endpoint: "/api/connect",
-      });
+      await client.startBotAndConnect({ endpoint: "/api/connect" });
       setConnected(true);
     } catch (err) {
       console.error("Connection failed:", err);
@@ -359,8 +310,7 @@ export function VoiceShell() {
   const endSession = async () => {
     await client.disconnect();
     setConnected(false);
-    setNumber(0);
-    setFlash(null);
+    setFlash(false);
   };
 
   return (
@@ -381,7 +331,7 @@ export function VoiceShell() {
             DA Voice Hackathon
           </h1>
           <p style={{ color: "#888", marginBottom: "2rem" }}>
-            Click to start talking with the AI about numbers
+            Click to start talking with the AI about shapes
           </p>
           <button
             onClick={startSession}
@@ -401,9 +351,9 @@ export function VoiceShell() {
         </div>
       ) : (
         <ConnectedUI
-          number={number}
+          shape={currentShape}
           flash={flash}
-          onNumberChange={handleNumberChange}
+          onShapeUpdate={handleShapeUpdate}
           onEnd={endSession}
         />
       )}

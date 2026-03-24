@@ -1,8 +1,7 @@
 import asyncio
-import json
 import os
 
-from pipecat.frames.frames import EndFrame, LLMMessagesAppendFrame
+from pipecat.frames.frames import EndFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -22,14 +21,8 @@ from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
 from loguru import logger
 
-# Shared number state
-current_number = 0
-
 
 async def run_bot(room_url: str, token: str):
-    global current_number
-    current_number = 0
-
     transport = DailyTransport(
         room_url,
         token,
@@ -56,15 +49,30 @@ async def run_bot(room_url: str, token: str):
     tools = ToolsSchema(
         standard_tools=[
             FunctionSchema(
-                name="set_number",
-                description="Set the displayed number to a new value. Use this whenever the user asks to change, set, update, or pick a number.",
+                name="render_shape",
+                description="Render a geometric shape on the user's screen.",
                 properties={
-                    "value": {
-                        "type": "integer",
-                        "description": "The number to display",
-                    }
+                    "shape": {
+                        "type": "string",
+                        "enum": ["circle", "triangle", "square", "pentagon", "hexagon", "star", "diamond"],
+                        "description": "The geometric shape to display.",
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "CSS color name or hex string (e.g. 'coral', '#ff6b6b').",
+                    },
+                    "size": {
+                        "type": "string",
+                        "enum": ["small", "medium", "large"],
+                        "description": "Display size of the shape.",
+                    },
+                    "fill": {
+                        "type": "string",
+                        "enum": ["solid", "outline"],
+                        "description": "Whether the shape is filled or outline only.",
+                    },
                 },
-                required=["value"],
+                required=["shape", "color", "size", "fill"],
             )
         ]
     )
@@ -73,11 +81,10 @@ async def run_bot(room_url: str, token: str):
         {
             "role": "system",
             "content": (
-                "You are a friendly voice assistant with a shared number display. "
-                "There is a large number shown on the screen that both you and the user can see and change. "
-                "The current number starts at 0. When the user asks to change the number, "
-                "use the set_number tool. You can also proactively suggest changing it. "
-                "Keep responses concise — one or two sentences."
+                "You are a friendly voice assistant that renders geometric shapes on the user's screen. "
+                "When the user asks for a shape, call render_shape with their requested shape, color, size, and fill style. "
+                "If they don't specify a property, choose something visually interesting. "
+                "Keep spoken responses short — just confirm what you rendered."
             ),
         }
     ]
@@ -90,15 +97,24 @@ async def run_bot(room_url: str, token: str):
         ),
     )
 
-    async def handle_set_number(params: FunctionCallParams):
-        global current_number
-        value = params.arguments.get("value", 0)
-        current_number = value
-        logger.info(f"Bot set number to {value}")
-        await rtvi.send_server_message({"type": "number_update", "value": value, "source": "bot"})
-        await params.result_callback(f"The number has been set to {value}.")
+    async def handle_render_shape(params: FunctionCallParams):
+        args = params.arguments
+        shape = args.get("shape", "circle")
+        color = args.get("color", "white")
+        size = args.get("size", "medium")
+        fill = args.get("fill", "solid")
+        logger.info(f"Bot rendering shape: {size} {fill} {color} {shape}")
+        await rtvi.send_server_message({
+            "type": "shape_update",
+            "shape": shape,
+            "color": color,
+            "size": size,
+            "fill": fill,
+            "source": "bot",
+        })
+        await params.result_callback(f"Rendered a {size} {fill} {color} {shape}.")
 
-    llm.register_function("set_number", handle_set_number)
+    llm.register_function("render_shape", handle_render_shape)
 
     pipeline = Pipeline(
         [
@@ -119,34 +135,6 @@ async def run_bot(room_url: str, token: str):
         params=PipelineParams(allow_interruptions=True),
         observers=[rtvi_observer],
     )
-
-    # Register AFTER task is created so closure captures it
-    @rtvi.event_handler("on_client_message")
-    async def on_client_message(processor, message):
-        global current_number
-        try:
-            logger.info(f"Client message received: type={message.type}, data={message.data}")
-            if message.type == "number_update":
-                value = message.data.get("value", 0) if isinstance(message.data, dict) else 0
-                current_number = value
-                logger.info(f"Client set number to {current_number}")
-                # Append message to context AND trigger LLM completion
-                await task.queue_frames(
-                    [
-                        LLMMessagesAppendFrame(
-                            messages=[
-                                {
-                                    "role": "user",
-                                    "content": f"[I just changed the number to {value} using the buttons on screen.]",
-                                }
-                            ],
-                            run_llm=True,
-                        )
-                    ]
-                )
-                logger.info("Queued LLMMessagesAppendFrame with run_llm=True")
-        except Exception as e:
-            logger.error(f"Error handling client message: {e}")
 
     @transport.event_handler("on_first_participant_joined")
     async def on_first_participant_joined(transport, participant):
