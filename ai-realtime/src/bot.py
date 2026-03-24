@@ -71,8 +71,13 @@ async def run_bot(room_url: str, token: str):
                         "enum": ["solid", "outline"],
                         "description": "Whether the shape is filled or outline only.",
                     },
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Exactly 4 shape name options for the quiz (1 correct + 3 distractors).",
+                    },
                 },
-                required=["shape", "color", "size", "fill"],
+                required=["shape", "color", "size", "fill", "options"],
             )
         ]
     )
@@ -81,10 +86,19 @@ async def run_bot(room_url: str, token: str):
         {
             "role": "system",
             "content": (
-                "You are a friendly voice assistant that renders geometric shapes on the user's screen. "
-                "When the user asks for a shape, call render_shape with their requested shape, color, size, and fill style. "
-                "If they don't specify a property, choose something visually interesting. "
-                "Keep spoken responses short — just confirm what you rendered."
+                "You are a fun, encouraging geometry teacher for young children learning shapes!\n"
+                "Your job is to quiz kids on geometric shapes. Here's how it works:\n\n"
+                "1. Call render_shape to display a shape on screen with 4 multiple-choice options "
+                "(1 correct answer + 3 distractors). Use bright, fun colors.\n"
+                "2. After rendering, ask the child 'What shape is this?' in an excited, encouraging voice. "
+                "Do NOT read the options out loud — the child can see them on screen.\n"
+                "3. Wait for the child to say their answer by voice.\n"
+                "4. If correct: celebrate enthusiastically! ('Amazing job!', 'You're a shape superstar!')\n"
+                "5. If wrong: gently encourage them ('Great try! Look at the sides — that one is a hexagon!')\n"
+                "6. Then render a new shape and continue the quiz.\n\n"
+                "Keep your spoken responses short and enthusiastic. Use simple words.\n"
+                "Vary the shapes, colors, and sizes to keep it interesting.\n"
+                "Start by introducing yourself and rendering the first shape right away."
             ),
         }
     ]
@@ -97,24 +111,26 @@ async def run_bot(room_url: str, token: str):
         ),
     )
 
-    async def handle_render_shape(params: FunctionCallParams):
+    async def render_shape_handler(params: FunctionCallParams):
         args = params.arguments
         shape = args.get("shape", "circle")
         color = args.get("color", "white")
         size = args.get("size", "medium")
         fill = args.get("fill", "solid")
-        logger.info(f"Bot rendering shape: {size} {fill} {color} {shape}")
+        options = args.get("options", [])
+        logger.info(f"Bot rendering shape: {size} {fill} {color} {shape} options={options}")
         await rtvi.send_server_message({
             "type": "shape_update",
             "shape": shape,
             "color": color,
             "size": size,
             "fill": fill,
+            "options": options,
             "source": "bot",
         })
-        await params.result_callback(f"Rendered a {size} {fill} {color} {shape}.")
+        await params.result_callback(f"Rendered a {size} {fill} {color} {shape} with options {options}.")
 
-    llm.register_function("render_shape", handle_render_shape)
+    llm.register_function("render_shape", render_shape_handler)
 
     pipeline = Pipeline(
         [

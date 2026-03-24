@@ -13,8 +13,8 @@ export default function Home() {
       style={{
         display: "flex",
         minHeight: "100vh",
-        background: "#0a0a0a",
-        color: "#fafafa",
+        background: "linear-gradient(180deg, #f0f4ff 0%, #e8f0fe 100%)",
+        color: "#1a1a2e",
       }}
     >
       <VoiceShell />
